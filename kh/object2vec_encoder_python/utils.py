@@ -107,11 +107,16 @@ def cv_regression(condition_features, subject, l2=0.0):
 
 
 def regression(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
+    #print(x_train.shape) (72, 9216)
+    #print(y_train.shape) (72, 195)
+    #print(x_test.shape) (9, 9216)
+    #print(y_test.shape) (9, 195)
     regr = Ridge(alpha=l2, fit_intercept=False)
     regr.fit(x_train, y_train)
     weights = regr.coef_
     if validate:
         y_pred = regr.predict(x_test)
+        # y_pred.shape (9, 195) (stim-1, voxel size)
         r = correlation(y_test, y_pred)
         return weights, r
     else:
