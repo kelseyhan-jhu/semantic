@@ -6,7 +6,6 @@ import torch
 from torchvision.transforms import functional as tr
 from sklearn.linear_model import Ridge, Lasso
 
-
 # ImageNet mean and standard deviation. All images
 # passed to a PyTorch pre-trained model (e.g. AlexNet) must be
 # normalized by these quantities, because that is how they were trained.

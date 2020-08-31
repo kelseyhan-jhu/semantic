@@ -6,6 +6,7 @@ from feature_extractors import AlexNetFC6, AlexNetConv5
 from Encoder import Encoder
 from utils import listdir, image_to_tensor, Subject, cv_regression
 
+
 def mean_condition_features(model, resolution):
     print('Extracting stimuli features')
     conditions = listdir('data/stimuli')

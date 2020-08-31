@@ -24,7 +24,6 @@ def get_predictions(model, resolution, stimuli_folder, batch_size=32):
             predictions[stimulus_name] = pred
     return predictions
 
-
 if __name__ == '__main__':
     parser = ArgumentParser(description='Run trained encoder on stimulus folder and save numpy results')
     parser.add_argument('--name', required=True, type=str,
