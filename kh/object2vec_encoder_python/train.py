@@ -2,10 +2,9 @@ from argparse import ArgumentParser
 import os
 from tqdm import tqdm
 import torch
-from feature_extractors import AlexNetFC6
+from feature_extractors import AlexNetFC6, AlexNetConv5
 from Encoder import Encoder
 from utils import listdir, image_to_tensor, Subject, cv_regression
-
 
 def mean_condition_features(model, resolution):
     print('Extracting stimuli features')
@@ -15,7 +14,7 @@ def mean_condition_features(model, resolution):
         c_name = c.split('/')[-1]
         stimuli = listdir(c)
         stimuli = [image_to_tensor(s, resolution=resolution) for s in stimuli]
-        stimuli = torch.stack(stimuli)
+        stimuli = torch.stack(stimuli) # stacked in 10
         #if torch.cuda.is_available():
         #    stimuli = stimuli.cuda()
         with torch.no_grad():
@@ -40,12 +39,14 @@ if __name__ == '__main__':
 
     if args.feature_extractor == 'alexnetfc6':
         feat_extractor = AlexNetFC6()
+    elif args.feature_extractor == 'alexnetconv5':
+        feat_extractor = AlexNetConv5()
     else:
         raise ValueError('Unimplemented feature extractor: {}'.format(args.feature_extractor))
 
-    subject = Subject(args.subject_number, args.rois)
-    condition_features = mean_condition_features(feat_extractor, args.resolution)
-
+    subject = Subject(args.subject_number, args.rois) # print(subject.n_voxels) e.g. 195
+    condition_features = mean_condition_features(feat_extractor, args.resolution) # 9216
+    
     weights, r = cv_regression(condition_features, subject, l2=args.l2)
     print('Mean test set correlation (r) over cross-validated folds: {:.4g}'.format(r))
 

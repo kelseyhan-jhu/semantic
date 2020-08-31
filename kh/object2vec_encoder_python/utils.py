@@ -4,7 +4,7 @@ import numpy as np
 import scipy.io
 import torch
 from torchvision.transforms import functional as tr
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, Lasso
 
 
 # ImageNet mean and standard deviation. All images
@@ -16,7 +16,7 @@ imagenet_std = (0.229, 0.224, 0.225)
 
 def listdir(dir, path=True):
     files = os.listdir(dir)
-    files = [f for f in files if f != '.DS_Store']
+    files = [f for f in files if (f != '.DS_Store' and f != '._.DS_Store')]
     files = sorted(files)
     if path:
         files = [os.path.join(dir, f) for f in files]
@@ -93,6 +93,7 @@ def cv_regression(condition_features, subject, l2=0.0):
         test_features = np.stack([condition_features[c] for c in test_conditions])
         train_voxels = np.stack([subject.condition_voxels[c] for c in train_conditions])
         test_voxels = np.stack([subject.condition_voxels[c] for c in test_conditions])
+        #_, r = L1_regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
         _, r = regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
         rs.append(r)
     mean_r = np.mean(rs)
@@ -102,18 +103,41 @@ def cv_regression(condition_features, subject, l2=0.0):
     train_features = np.stack([condition_features[c] for c in train_conditions])
     train_voxels = np.stack([subject.condition_voxels[c] for c in train_conditions])
     weights = regression(train_features, train_voxels, None, None, l2=l2, validate=False)
-
+    #_, r = L1_regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
+    
     return weights, mean_r
 
 
 def regression(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
-    #print(x_train.shape) (72, 9216)
-    #print(y_train.shape) (72, 195)
-    #print(x_test.shape) (9, 9216)
-    #print(y_test.shape) (9, 195)
+    #print(x_train.shape) #(72, 9216) #(72, 12544)
+    #print(y_train.shape) #(72, 195)
+    #print(x_test.shape) #(9, 9216)
+    #print(y_test.shape) #(9, 195)
     regr = Ridge(alpha=l2, fit_intercept=False)
     regr.fit(x_train, y_train)
     weights = regr.coef_
+    
+    #print(len(weights)) # 195 * 12544
+
+    if validate:
+        y_pred = regr.predict(x_test)
+        # y_pred.shape (9, 195) (stim-1, voxel size)
+        r = correlation(y_test, y_pred)
+        return weights, r
+    else:
+        return weights
+
+def L1_regression(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
+    #print(x_train.shape) #(72, 9216) #(72, 12544)
+    #print(y_train.shape) #(72, 195)
+    #print(x_test.shape) #(9, 9216)
+    #print(y_test.shape) #(9, 195)
+    regr = Lasso(fit_intercept=False)
+    regr.fit(x_train, y_train)
+    weights = regr.coef_
+    
+    #print(len(weights)) # 195 * 12544
+
     if validate:
         y_pred = regr.predict(x_test)
         # y_pred.shape (9, 195) (stim-1, voxel size)

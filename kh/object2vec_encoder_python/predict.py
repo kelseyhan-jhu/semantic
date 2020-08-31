@@ -11,11 +11,12 @@ def get_predictions(model, resolution, stimuli_folder, batch_size=32):
     print('Getting model predictions')
     stimuli = listdir(stimuli_folder)
     predictions = {}
-    for i in tqdm(range(0, len(stimuli), batch_size)):
+    #for i in tqdm(range(0, len(stimuli), batch_size)):
+    for i in range(0, len(stimuli), batch_size):
         batch_stimuli = stimuli[i:i + batch_size]
         batch_tensors = torch.stack([image_to_tensor(s, resolution=resolution) for s in batch_stimuli])
-        if torch.cuda.is_available():
-            batch_tensors = batch_tensors.cuda()
+        #if torch.cuda.is_available():
+        #    batch_tensors = batch_tensors.cuda()
         with torch.no_grad():
             batch_preds = model(batch_tensors).cpu().numpy()
         for stimulus_path, pred in zip(batch_stimuli, batch_preds):
@@ -38,9 +39,16 @@ if __name__ == '__main__':
     encoder = torch.load(os.path.join('saved_encoders', args.name + '.pth'),
                          map_location=lambda storage, loc: storage)
 
-    predictions = get_predictions(encoder, args.resolution, args.stimuli_folder)
-
+    category = listdir(args.stimuli_folder)
+    category_stimuli = {}
+    
     shutil.rmtree(args.save_folder, ignore_errors=True)
     os.mkdir(args.save_folder)
-    for stimulus_name, pred in predictions.items():
-        np.save(os.path.join(args.save_folder, stimulus_name), pred)
+
+    for c in tqdm(category):
+        c_name = c.split('/')[-1]
+        predictions = get_predictions(encoder, args.resolution, c)
+        
+        os.mkdir(args.save_folder + '/' + c_name)
+        for stimulus_name, pred in predictions.items():
+            np.save(os.path.join(args.save_folder, c_name, stimulus_name), pred)
