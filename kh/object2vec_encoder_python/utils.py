@@ -5,6 +5,8 @@ import scipy.io
 import torch
 from torchvision.transforms import functional as tr
 from sklearn.linear_model import Ridge, Lasso
+from collections import OrderedDict 
+
 
 # ImageNet mean and standard deviation. All images
 # passed to a PyTorch pre-trained model (e.g. AlexNet) must be
@@ -12,6 +14,23 @@ from sklearn.linear_model import Ridge, Lasso
 imagenet_mean = (0.485, 0.456, 0.406)
 imagenet_std = (0.229, 0.224, 0.225)
 
+def word2sense(embedding_file):
+    f = open(embedding_file, 'r', encoding='utf-8')
+    temp = f.readlines()
+    wordlist = [line.split(',')[0] for idx, line in enumerate(temp) if idx != 0]
+    nDims = 2250
+    f.close()
+    
+    word2sense = {new_list: [] for new_list in wordlist} # create word embedding dictionary
+    for i, line in enumerate(temp):
+        if i == 0:
+            continue
+        embedding = line.split(',')
+        embedding.remove('\n')
+        embedding_float = ([float(j) for j in embedding[1:]])
+        word2sense[embedding[0]] = embedding_float
+    word2sense = OrderedDict(word2sense)
+    return wordlist, nDims, word2sense
 
 def listdir(dir, path=True):
     files = os.listdir(dir)
@@ -82,10 +101,35 @@ class Subject:
                                    '/sets.mat')['sets']
         self.cv_sets = [[cond[0] for cond in s[:, 0]] for s in sets[0, :]]
 
-
 def cv_regression(condition_features, subject, l2=0.0):
     # Get cross-validated mean test set correlation
     rs = []
+    for test_conditions in subject.cv_sets:
+        train_conditions = [c for c in subject.conditions if c not in test_conditions]
+        
+        train_features = np.stack([condition_features[c] for c in train_conditions])
+        test_features = np.stack([condition_features[c] for c in test_conditions])
+        train_voxels = np.stack([subject.condition_voxels[c] for c in train_conditions])
+        test_voxels = np.stack([subject.condition_voxels[c] for c in test_conditions])
+        #_, r = L1_regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
+        _, r = regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
+        rs.append(r)
+    mean_r = np.mean(rs)
+
+    # Train on all of the data
+    train_conditions = subject.conditions
+    train_features = np.stack([condition_features[c] for c in train_conditions])
+    train_voxels = np.stack([subject.condition_voxels[c] for c in train_conditions])
+    weights = regression(train_features, train_voxels, None, None, l2=l2, validate=False)
+    #_, r = L1_regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
+    
+    return weights, mean_r
+
+
+def cv_regression_w2s(condition_Things, w2s, l2=0.0):
+    # Get cross-validated mean test set correlation
+    rs = []
+    
     for test_conditions in subject.cv_sets:
         train_conditions = [c for c in subject.conditions if c not in test_conditions]
         train_features = np.stack([condition_features[c] for c in train_conditions])
@@ -108,44 +152,42 @@ def cv_regression(condition_features, subject, l2=0.0):
 
 
 def regression(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
-    #print(x_train.shape) #(72, 9216) #(72, 12544)
-    #print(y_train.shape) #(72, 195)
-    #print(x_test.shape) #(9, 9216)
-    #print(y_test.shape) #(9, 195)
+    regr = Ridge(alpha=l2, fit_intercept=False)
+    regr.fit(x_train, y_train)
+    weights = regr.coef_
+    r_ = []
+    if validate:
+        y_pred = regr.predict(x_test)
+        # y_pred.shape (9, 195) (stim-1, voxel size)
+        y_pred = y_pred.transpose()
+        y_test = y_test.transpose()
+        for (y_t, y_p) in zip(y_test, y_pred):
+            r = correlation(y_t, y_p)
+            r_.append(r)
+            #print(r)
+        return weights, r_
+    else:
+        return weights
+    
+
+def regression_(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
     regr = Ridge(alpha=l2, fit_intercept=False)
     regr.fit(x_train, y_train)
     weights = regr.coef_
     
-    #print(len(weights)) # 195 * 12544
-
+    r_ = {}
     if validate:
         y_pred = regr.predict(x_test)
         # y_pred.shape (9, 195) (stim-1, voxel size)
-        r = correlation(y_test, y_pred)
-        return weights, r
+        for (y_t, y_p) in zip(y_test, y_pred):
+            r = correlation(y_t, y_p)
+            r_.append(r)
+            print(r)
+        return weights, r_, y_pred
     else:
         return weights
 
-def L1_regression(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
-    #print(x_train.shape) #(72, 9216) #(72, 12544)
-    #print(y_train.shape) #(72, 195)
-    #print(x_test.shape) #(9, 9216)
-    #print(y_test.shape) #(9, 195)
-    regr = Lasso(fit_intercept=False)
-    regr.fit(x_train, y_train)
-    weights = regr.coef_
     
-    #print(len(weights)) # 195 * 12544
-
-    if validate:
-        y_pred = regr.predict(x_test)
-        # y_pred.shape (9, 195) (stim-1, voxel size)
-        r = correlation(y_test, y_pred)
-        return weights, r
-    else:
-        return weights
-
-
 def correlation(a, b):
     zs = lambda v: (v - v.mean(0)) / v.std(0)
     r = (zs(a) * zs(b)).mean()
