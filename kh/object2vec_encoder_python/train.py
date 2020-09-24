@@ -2,9 +2,10 @@ from argparse import ArgumentParser
 import os
 from tqdm import tqdm
 import torch
-from feature_extractors import AlexNetFC6, AlexNetConv5
+from feature_extractors import AlexNetConv1, AlexNetConv5, AlexNetFC6
 from Encoder import Encoder
 from utils import listdir, image_to_tensor, Subject, cv_regression
+import numpy as np
 
 
 def mean_condition_features(model, resolution):
@@ -34,14 +35,19 @@ if __name__ == '__main__':
     parser.add_argument('--subject_number', default=1, type=int, help='Subject number to train encoder for',
                         choices=[1, 2, 3, 4])
     parser.add_argument('--resolution', default=256, type=int, help='Resolution at which to resize stimuli')
-    parser.add_argument('--feature_extractor', default='alexnetfc6', type=str, help='Feature extraction model')
+    parser.add_argument('--feature_extractor', default='alexnetconv5', type=str, help='Feature extraction model')
+    #parser.add_argument('--pretrained', default='True', type=str, help='Feature extractor pretrained')
+    #parser.add_argument('--layer', default='conv1', type=str, help='Feature extraction layer')
+    
     parser.add_argument('--l2', default=0, type=float, help='L2 regularization weight')
     args = parser.parse_args()
-
+    
     if args.feature_extractor == 'alexnetfc6':
         feat_extractor = AlexNetFC6()
     elif args.feature_extractor == 'alexnetconv5':
         feat_extractor = AlexNetConv5()
+    elif args.feature_extractor == 'alexnetconv1':
+        feat_extractor = AlexNetConv1()
     else:
         raise ValueError('Unimplemented feature extractor: {}'.format(args.feature_extractor))
 
@@ -50,6 +56,7 @@ if __name__ == '__main__':
     
     weights, r = cv_regression(condition_features, subject, l2=args.l2)
     print('Mean test set correlation (r) over cross-validated folds: {:.4g}'.format(r))
-
-    encoder = Encoder(feat_extractor, weights)
-    torch.save(encoder, os.path.join('saved_encoders', args.name + '.pth'))
+    
+    np.save(os.path.join('saved_weights', args.name), weights)
+    #encoder = Encoder(feat_extractor, weights)
+    #torch.save(encoder, os.path.join('saved_encoders', args.name + '.pth'))
