@@ -83,27 +83,41 @@ if __name__ == '__main__':
         features = torch.load('features_conv5.pth')
     elif args.feature_extractor == 'alexnetconv1':
         features = torch.load('features_conv1.pth')
+    elif args.feature_extractor == 'vgg16conv5':
+        features = torch.load('features_vgg16_conv5.pth')
     else:
         raise ValueError('Unimplemented feature extractor: {}'.format(args.feature_extractor))
     
     if args.trained_random == 'trained':
-        weight = np.load(os.path.join('saved_weights', args.name) + '.npy')
+        weight = np.load(os.path.join('saved_weights/vgg', args.name) + '.npy')
     elif args.trained_random == 'random':
-        scaffold = np.load(os.path.join('saved_weights', args.name) + '.npy')
-        fmri_mean = np.mean(scaffold, axis=0)
-        fmri_cov = np.cov(scaffold, rowvar=False)
-        #weight = np.random.multivariate_normal(fmri_mean, fmri_cov, (scaffold.shape[0]))
-        weight = np.random.multivariate_normal(fmri_mean, fmri_cov, (scaffold.shape[0]))
-        #weight = np.random.rand(scaffold.shape[0], scaffold.shape[1])
+        scaffold = np.load(os.path.join('saved_weights/vgg', args.name) + '.npy')
+#         fmri_mean = np.mean(scaffold, axis=0)
+#         fmri_cov = np.cov(scaffold, rowvar=False)
+#         #weight = np.random.multivariate_normal(fmri_mean, fmri_cov, (scaffold.shape[0]))
+#         weight = np.random.multivariate_normal(fmri_mean, fmri_cov, (scaffold.shape[0]))
+#         #weight = np.random.rand(scaffold.shape[0], scaffold.shape[1])
+        fmri_mean2 = np.mean(scaffold, axis=1)
+        fmri_cov2 = np.cov(scaffold, rowvar=True)
+        weight2 = np.random.multivariate_normal(fmri_mean2, fmri_cov2, (scaffold.shape[1]))
+        weight = weight2.T
         print(weight.shape)
+    elif args.trained_random == 'permuted':
+        scaffold = np.load(os.path.join('saved_weights', args.name) + '.npy')
+        permutation = np.random.choice(scaffold.shape[1], scaffold.shape[1], replace=False)
+        idx = np.empty_like(permutation)
+        idx[permutation] = np.arange(len(permutation))
+        weight = scaffold[:, idx]
     else:
         raise ValueError('Cannot have values other than trained or random: {}'.format(args.trained_random))
-        
+            
     for c in tqdm(category, total=len(category), position=0, leave=True):
         c_name = c.split('/')[-1]
         #predictions = get_predictions(encoder, args.resolution, c)
         if c_name in words:
-            feature = features[c_name]
+            key_name = "/home/chan21/projects/semanticdimensionality/kh/object2vec_encoder_python/images/" + c_name
+            #predictions = get_predictions(encoder, args.resolution, c)
+            feature = features[key_name]
             #predictions = get_predictions_ww(weight, feature, c)
             pred = np.matmul(feature, weight.T)
             os.mkdir(args.save_folder + '/' + c_name)

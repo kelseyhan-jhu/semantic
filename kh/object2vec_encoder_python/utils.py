@@ -7,7 +7,9 @@ from torchvision.transforms import functional as tr
 from sklearn.linear_model import Ridge, Lasso
 from sklearn.model_selection import KFold
 from sklearn.decomposition import PCA
+from sklearn.impute import SimpleImputer
 from collections import OrderedDict 
+from scipy import stats
 
 # ImageNet mean and standard deviation. All images
 # passed to a PyTorch pre-trained model (e.g. AlexNet) must be
@@ -15,14 +17,23 @@ from collections import OrderedDict
 imagenet_mean = (0.485, 0.456, 0.406)
 imagenet_std = (0.229, 0.224, 0.225)
 
+def p2r(p, n):
+    t = stats.t.ppf(1-p, n-2);
+    r = (t**2/((t**2)+(n-2))) ** 0.5;
+    return r
+
 def stack_features(path, fmri=True):
     if fmri is True:
         conditions = sorted(listdir(path))
         condition_voxels = {}
         for condition in conditions:
-            file_name = listdir((os.path.join(path, condition)))[0]
-            file_path = os.path.join(path, condition, file_name)
-            condition_voxels[condition] = np.load(file_path)
+            #print(condition)
+            #print(listdir(condition))
+            file_name = (listdir(condition)[0].split('/'))[-1]
+            #print(file_name)
+            file_path = os.path.join(condition, file_name)
+            #print(file_path)
+            condition_voxels[condition] = np.load(file_path) 
         features_stacked = np.stack([condition_voxel for condition, condition_voxel in OrderedDict(condition_voxels).items()])
         #print(np.shape(pred_voxels)) # should be 1470, 200
     elif fmri is False: 
@@ -34,25 +45,40 @@ def stack_features(path, fmri=True):
 def cv_regression_w2s(features, w2s, fit=None, k=9, l2 = 0.0, pc=None):
     if pc is not None:
         pca = PCA(n_components=pc)
-    kf9 = KFold(n_splits = k)
+    kf = KFold(n_splits = k)
     rs = []
-    for train_index, test_index in kf9.split(features):
+    for train_index, test_index in kf.split(features):
         train_features = features[train_index,]
         test_features =  features[test_index,]
+        
         if pc is not None:
-            pca.fit(train_features)    
+            pca.fit(train_features)   
             train_features = pca.transform(train_features)
             test_features = pca.transform(test_features)
         train_embeddings = np.stack([embedding for i, embedding in enumerate(w2s.values()) if i in train_index])
+        
+        #print(np.nanmean(train_embeddings.astype('float64')))
+        
+        #imp_mean = SimpleImputer(missing_values=np.nan, strategy='mean')
+
+        #imp_mean.fit(train_embeddings.astype('float64'))
+        #train_embeddings = imp_mean.transform(train_embeddings.astype('float64'))
+
+        #print(np.nanmean(train_embeddings))
+        
         test_embeddings = np.stack([embedding for i, embedding in enumerate(w2s.values()) if i in test_index])
-        _, r = regression(train_features, train_embeddings, test_features, test_embeddings, l2=l2)
+        #imp_mean = SimpleImputer(missing_values=np.nan, strategy='mean')
+        #imp_mean.fit(test_embeddings.astype('float64'))
+        #test_embeddings = imp_mean.transform(test_embeddings.astype('float64'))
+        
+        weights, r = regression(train_features, train_embeddings, test_features, test_embeddings, l2=l2)
         rs.append(r)
         
     rs = np.array(rs)
     
     mean_r = np.nanmean(rs, axis=0) # mean across k folds 
 
-    return mean_r
+    return weights, mean_r
 
 def word2sense(embedding_file):
     f = open(embedding_file, 'r', encoding='utf-8')
@@ -72,7 +98,7 @@ def word2sense(embedding_file):
 
 def listdir(dir, path=True):
     files = os.listdir(dir)
-    files = [f for f in files if (f != '.DS_Store' and f != '._.DS_Store')]
+    files = [f for f in files if (f != '.DS_Store' and f != '._.DS_Store' and f != '.ipynb_checkpoints')]
     files = sorted(files)
     if path:
         files = [os.path.join(dir, f) for f in files]
@@ -124,7 +150,6 @@ class Subject:
     def __init__(self, subject_num, rois):
         roistack = scipy.io.loadmat('data/fmri/subj{:03}'.format(subject_num) +
                                     '/roistack.mat')['roistack']
-
         self.roi_names = [d[0] for d in roistack['rois'][0, 0][:, 0]]
         self.conditions = [d[0] for d in roistack['conds'][0, 0][:, 0]]
 
@@ -142,6 +167,9 @@ class Subject:
 def cv_regression(condition_features, subject, l2=0.0):
     # Get cross-validated mean test set correlation
     rs = []
+    
+    pca = PCA(n_components=10)
+
     for test_conditions in subject.cv_sets:
         train_conditions = [c for c in subject.conditions if c not in test_conditions]
         
@@ -152,6 +180,10 @@ def cv_regression(condition_features, subject, l2=0.0):
         #_, r = L1_regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
         _, r = regression(train_features, train_voxels, test_features, test_voxels, l2=l2)
         rs.append(r)
+        
+        pca.fit(train_voxels)   
+        print(pca.explained_variance_ratio_)
+
     mean_r = np.mean(rs)
 
     # Train on all of the data
@@ -196,7 +228,6 @@ def regression(x_train, y_train, x_test, y_test, l2=0.0, validate=True):
     r_ = []
     if validate:
         y_pred = regr.predict(x_test)
-        # y_pred.shape (9, 195) (stim-1, voxel size)
         y_pred = y_pred.transpose()
         y_test = y_test.transpose()
         for (y_t, y_p) in zip(y_test, y_pred):

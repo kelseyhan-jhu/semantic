@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import os
 from tqdm import tqdm
 import torch
-from feature_extractors import AlexNetConv1, AlexNetConv5, AlexNetFC6
+from feature_extractors import AlexNetConv1, AlexNetConv5, AlexNetFC6, VGG16
 from Encoder import Encoder
 from utils import listdir, image_to_tensor, Subject, cv_regression
 import numpy as np
@@ -22,6 +22,7 @@ def mean_condition_features(model, resolution):
         with torch.no_grad():
             feats = model(stimuli).mean(dim=0).cpu().numpy()
         condition_features[c_name] = feats
+        #print(feats.shape)
     return condition_features
 
 
@@ -48,6 +49,8 @@ if __name__ == '__main__':
         feat_extractor = AlexNetConv5()
     elif args.feature_extractor == 'alexnetconv1':
         feat_extractor = AlexNetConv1()
+    elif args.feature_extractor == 'vgg16':
+        feat_extractor = VGG16();
     else:
         raise ValueError('Unimplemented feature extractor: {}'.format(args.feature_extractor))
 
