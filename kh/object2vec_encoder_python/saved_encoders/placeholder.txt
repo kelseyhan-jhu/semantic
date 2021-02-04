@@ -1,1 +1,0 @@
-This file just exists so that the repository contains the 'saved_encoders' folder.
